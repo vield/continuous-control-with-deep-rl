@@ -16,11 +16,18 @@ It appears that at least `tflearn` contains an implementation, but I'm using van
 This demo uses the `Pendulum-v0` environment.
 It is a minimal problem with a continuous (one-dimensional) action space, representing the magnitude and direction of a torque applied to the pendulum.
 
-<img src="images/pendulum-screenshot.png" alt="Screenshot of the pendulum environment">
+<img src="images/pendulum-screenshot.png" alt="Screenshot of the pendulum environment" />
 
 (Theoretically, the demo should work with a different low-dimensional environment.
 I will probably try it out once I've got the first version working reliably.
 For something pixel-based, one would probably want to add convolutional layers that aren't used here.)
+
+## Results
+
+From an early run of the mini demo, it appears to be learning something as training progresses.
+Note that in all these episodes, noise has been introduced to the action predicting process, so we are not choosing the actions currently believed to be optimal.
+
+<img src="images/reward-per-training-episode.png" alt="Total reward per training episode" />
 
 ## Future work
 
