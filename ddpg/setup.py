@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from ddpg import replay
+from ddpg import actor, replay
 
 
 class Setup:
@@ -14,7 +14,12 @@ class Setup:
         self.state_dims = env.observation_space.shape[0]
         self.action_range = np.stack((env.action_space.low, env.action_space.high), axis=0)
 
-        # TODO: Initialize actor
+        self.actor = actor.Actor(
+            sess=self.sess,
+            action_range=self.action_range,
+            action_dimensions=self.action_dims,
+            state_dimensions=self.state_dims
+        )
         # TODO: initialize critic
 
         self.buffer = replay.ReplayBuffer(
@@ -28,19 +33,31 @@ class Setup:
         init_op = tf.global_variables_initializer()
         self.sess.run(init_op)
 
+        self.total_reward_per_training_episode = []
+        self.state = None
+
     def reset(self):
-        self.env.reset()
+        self.state = self.env.reset()
+        self.total_reward_per_training_episode.append(0.0)
 
     def make_a_move(self):
+        action = self.choose_noisy_action(self.state)
+        new_state, reward, done, info = self.env.step(action)
+        self.buffer.store(self.state, action, reward, new_state, done)
+
+        self.total_reward_per_training_episode[-1] += reward
+
         raise NotImplementedError("Stepping forward not implemented yet!")
 
     def run_one_step_of_training(self):
         raise NotImplementedError("Training not implemented yet!")
 
     def choose_action(self, state):
-        raise NotImplementedError("Action choosing not implemented yet!")
+        """Use the actor to choose the best possible action given the current parameters."""
+        return self.actor.predict(np.reshape(state, (1, self.state_dims)))
 
     def choose_noisy_action(self, state):
+        """Choose the best possible action and add some 'exploratory' noise."""
         return self.choose_action(state) + self.generate_noise()
 
 
