@@ -24,18 +24,23 @@ def initialize_ddpg(options):
 def run_ddpg(options):
     env, sess, setup = initialize_ddpg(options)
 
-    for episode in range(options.num_episodes):
-        setup.reset()
+    try:
+        for episode in range(options.num_episodes):
+            setup.reset()
 
-        for time in range(options.num_timesteps):
-            if options.render_training:
-                env.render()
+            for time in range(options.num_timesteps):
+                if options.render_training:
+                    env.render()
 
-            done = setup.make_a_move()
+                done = setup.make_an_exploratory_move()
 
-            if len(setup.buffer) >= options.batch_size:
-                setup.run_one_step_of_training()
+                if len(setup.buffer) >= options.batch_size:
+                    setup.run_one_step_of_training()
 
-            if done:
-                logging.info("Done. Finishing episode after {} timesteps.".format(time+1))
-                break
+                if done:
+                    logging.info("Done. Finishing episode after {} timesteps.".format(time+1))
+                    setup.log_results()
+                    break
+    except KeyboardInterrupt:
+        # FIXME: Better output
+        print(setup.total_reward_per_training_episode[:-1])  # Last one might be corrupted

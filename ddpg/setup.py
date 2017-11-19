@@ -1,7 +1,9 @@
+import logging
+
 import numpy as np
 import tensorflow as tf
 
-from ddpg import actor, replay
+from ddpg import actor, critic, replay
 
 
 class Setup:
@@ -10,17 +12,25 @@ class Setup:
         self.sess = sess
         self.env = env
 
+        self.batch_size = options.batch_size
+        self.gamma = options.gamma
+
         self.action_dims = env.action_space.shape[0]
         self.state_dims = env.observation_space.shape[0]
         self.action_range = np.stack((env.action_space.low, env.action_space.high), axis=0)
 
         self.actor = actor.Actor(
             sess=self.sess,
+            batch_size=self.batch_size,
             action_range=self.action_range,
             action_dimensions=self.action_dims,
             state_dimensions=self.state_dims
         )
-        # TODO: initialize critic
+        self.critic = critic.Critic(
+            sess=self.sess,
+            action_dimensions=self.action_dims,
+            state_dimensions=self.state_dims
+        )
 
         self.buffer = replay.ReplayBuffer(
             buffer_size=options.buffer_size,
@@ -28,29 +38,86 @@ class Setup:
             state_dimensions=env.observation_space.shape[0]
         )
 
-        self.generate_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.action_dims))
+        self.generate_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(self.action_dims), sigma=options.noise_sigma, theta=0.15)
 
         init_op = tf.global_variables_initializer()
         self.sess.run(init_op)
 
+        # TODO: Do something with this
+        # TODO: Especially if KeyboardInterrupted... would like it to be written down somewhere for plotting
+        self.current_episode = 0
         self.total_reward_per_training_episode = []
         self.state = None
 
     def reset(self):
         self.state = self.env.reset()
         self.total_reward_per_training_episode.append(0.0)
+        self.current_episode += 1
 
-    def make_a_move(self):
+    def make_an_exploratory_move(self):
+        """Choose action with exploratory noise; observe and store outcome.
+
+        :return done:
+            True if the latest move took us to a terminal state
+            in the environment. This ends a training episode.
+        """
         action = self.choose_noisy_action(self.state)
         new_state, reward, done, info = self.env.step(action)
         self.buffer.store(self.state, action, reward, new_state, done)
 
-        self.total_reward_per_training_episode[-1] += reward
+        self.total_reward_per_training_episode[-1] += reward[0]
 
-        raise NotImplementedError("Stepping forward not implemented yet!")
+        return done
 
     def run_one_step_of_training(self):
-        raise NotImplementedError("Training not implemented yet!")
+        """Train the critic and the actor from a sampled minibatch.
+
+        Also update the target networks.
+        """
+        # Sample uncorrelated transitions from the replay buffer
+        old_states, actions, rewards, new_states, is_terminal = self.buffer.next_batch(self.batch_size)
+
+        self._run_critic_training(old_states, actions, rewards, new_states, is_terminal)
+        self._run_actor_training(old_states)
+
+        # Update the target networks
+        self.actor.update_target_network()
+        self.critic.update_target_network()
+
+    def _run_critic_training(self, old_states, actions, rewards, new_states, is_terminal):
+        """Run one step of critic training."""
+        # Compute fixed y_i (target for the quality function the critic is learning)
+
+        # Use target networks to predict expected future rewards
+        target_q = self.critic.target_predict(
+            states=new_states,
+            actions=self.actor.target_predict(
+                states=new_states
+            )
+        )
+        # If the new_state is not a terminal state, add expected reward
+        # starting from there
+        y_i = rewards[:]
+        y_i[~is_terminal] += self.gamma * target_q[~is_terminal]
+
+        # Train critic relative to y_i
+        self.critic.run_one_step_of_training(
+            states=old_states,
+            actions=actions,
+            predicted_outputs=y_i
+        )
+
+    def _run_actor_training(self, old_states):
+        # Train actor using the sampled policy gradients
+        predicted_actions = self.actor.predict(old_states)
+
+        self.actor.run_one_step_of_training(
+            states=old_states,
+            gradients=self.critic.compute_action_gradients(
+                states=old_states,
+                actions=predicted_actions
+            )[0]  # Why?
+        )
 
     def choose_action(self, state):
         """Use the actor to choose the best possible action given the current parameters."""
@@ -60,6 +127,9 @@ class Setup:
         """Choose the best possible action and add some 'exploratory' noise."""
         return self.choose_action(state) + self.generate_noise()
 
+    def log_results(self):
+        logging.debug("Episode: {} Total reward: {}".format(self.current_episode, self.total_reward_per_training_episode[-1]))
+
 
 # Copied from from https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py
 class OrnsteinUhlenbeckActionNoise:
@@ -67,7 +137,7 @@ class OrnsteinUhlenbeckActionNoise:
 
     The previous noise value is stored and used as a starting point
     for the next value."""
-    def __init__(self, mu, sigma=0.3, theta=.15, dt=1e-2, x0=None):
+    def __init__(self, mu, sigma=0.3, theta=0.15, dt=1e-2, x0=None):
         self.theta = theta
         self.mu = mu
         self.sigma = sigma

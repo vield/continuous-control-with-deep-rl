@@ -31,8 +31,9 @@ Note that in all these episodes, noise has been introduced to the action predict
 
 ## Future work
 
-- Add batch normalization
-- Try a different environment
+- Add *batch normalization*
+- *Prioritized experience replay*. Especially with big buffer sizes, it appears like we're learning slower as we're training on all sorts of stupid moves the initial network was performing. :)
+- Try a different environment (probably another OpenAI gym type thing)
 - If feeling adventurous, try a low-dimensional pixel environment
 
 ## Links

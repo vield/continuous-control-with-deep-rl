@@ -6,7 +6,7 @@ from ddpg import network
 
 class Actor:
     """Container for the actor network and its target network."""
-    def __init__(self, sess, action_range,
+    def __init__(self, sess, action_range, batch_size,
                  action_dimensions=1, state_dimensions=1,
                  learning_rate=0.0001, tau=0.001):
         """Initialize actor and actor target networks and ops for training.
@@ -15,6 +15,10 @@ class Actor:
             TensorFlow session.
         :param action_range:
             [low, high] for the action range.
+        :param batch_size:
+            Minibatch size for sampling. Used for initializing the
+            deterministic policy gradient update (the expected value
+            for the sample is the mean). See below.
         :param action_dimensions:
             Dimensions of the (continuous) action space.
         :param state_dimensions:
@@ -33,6 +37,7 @@ class Actor:
         self.tau = tau
 
         self.network = ActorNetwork(state_dimensions, action_dimensions, action_range)
+        # TODO: Actually in DDPG, they should be initialized to start from the same set of weights
         self.target_network = ActorNetwork(state_dimensions, action_dimensions, action_range)
 
         # TensorFlow op for shifting the critic target network params
@@ -53,16 +58,44 @@ class Actor:
                 )
             )
 
-        # TODO: Add training ops
+        # Gradients of the critic relative to the actions
+        self._initial_gradients = tf.placeholder(tf.float32, [None, action_dimensions])
 
+        self._weighted_gradients = tf.gradients(
+            self.network.scaled_outputs,
+            self.network.get_trainable_params(),
+            # Negated in pemami4911's work... but I don't understand why :S
+            # Need to read TensorFlow docs/code
+            grad_ys=-self._initial_gradients
+        )
+        self._actor_gradients = [
+            tf.div(weighted_grad, batch_size)
+            for weighted_grad in self._weighted_gradients
+        ]
+
+        self._train_step = tf.train.AdamOptimizer(self.learning_rate).apply_gradients(
+            zip(self._actor_gradients, self.network.get_trainable_params())
+        )
     def update_target_network(self):
-        """Shift target network weights towards critic network weights."""
+        """Shift target network weights towards learned network weights."""
         self.sess.run(self._update_target_network_op)
 
     def predict(self, states):
-        """Predict best actions using the actor network."""
+        """Predict best actions using the trained network."""
         return self.network.predict(self.sess, states)
 
+    def target_predict(self, states):
+        """Predict best actions using the target network."""
+        return self.target_network.predict(self.sess, states)
+
+    def run_one_step_of_training(self, states, gradients):
+        self.sess.run(
+            self._train_step,
+            feed_dict={
+                self.network.states: states,
+                self._initial_gradients: gradients
+            }
+        )
 
 class ActorNetwork:
     def __init__(self, state_dimensions, action_dimensions, action_range):
@@ -72,11 +105,11 @@ class ActorNetwork:
         # Create fully-connected architecture
         nodes_per_layer = [state_dimensions, 400, 300, action_dimensions]
 
-        self._biases = network.create_bias_shaped_variables(nodes_per_layer, stddev=0.1)
-        self._weights = network.create_weight_shaped_variables(nodes_per_layer, stddev=0.1)
-        self._var_list = self._biases + self._weights
+        biases = network.create_bias_shaped_variables(nodes_per_layer, stddev=0.01)
+        weights = network.create_weight_shaped_variables(nodes_per_layer, stddev=0.01)
+        self._var_list = biases + weights
 
-        self._raw_outputs = network.create_fully_connected_architecture(self.states, self._biases, self._weights)
+        self._raw_outputs = network.create_fully_connected_architecture(self.states, biases, weights)
 
         # The raw outputs have arbitrary magnitudes.
         # We use tanh for an activation function, it casts them to be in (-1, 1).
