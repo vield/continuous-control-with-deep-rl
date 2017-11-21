@@ -6,7 +6,7 @@ from ddpg import network
 
 class Critic:
     """Container for the critic network and its target network."""
-    def __init__(self, sess, actor,
+    def __init__(self, sess, actor, gamma=0.99,
                  action_dimensions=1, state_dimensions=1,
                  learning_rate=0.001, tau=0.001):
         """Initialize actor and actor target networks and ops for training.
@@ -29,6 +29,7 @@ class Critic:
 
         self.learning_rate = learning_rate
         self.tau = tau
+        self.gamma = gamma
 
         self.network = CriticNetwork(state_dimensions, action_dimensions)
         # TODO: Actually in DDPG, they should be initialized to start from the same set of weights
@@ -54,12 +55,21 @@ class Critic:
 
         # Predicted value for Q(s, a) -- "y_i" in the paper
         # Used to compute the cost
-        self._predicted_outputs = tf.placeholder(tf.float32, [None, 1])
+        self.target_q = self.target_network._raw_outputs
+        self.states_input = self.target_network.states
+        self.rewards_input = tf.placeholder(tf.float32, [None, 1])
+        # FIXME: Terminal states are ignored for now, as they're not relevant
+        # in the pendulumn env. They're relevant for other envs though, so fix.
+        self.y_i = tf.add(
+            self.rewards_input,
+            tf.multiply(self.gamma, self.target_q)
+        )
+        self.y_i = tf.stop_gradient(self.y_i)
 
         network_outputs = self.network.get_unscaled_outputs()
 
         self._mse = tf.reduce_mean(
-            tf.square(self._predicted_outputs - network_outputs)
+            tf.square(self.y_i - network_outputs)
         )
         self._train_step = tf.train.AdamOptimizer(self.learning_rate).minimize(self._mse)
 
@@ -74,7 +84,7 @@ class Critic:
         """Predict quality values using the target network."""
         return self.target_network.predict(self.sess, states, actions)
 
-    def run_one_step_of_training(self, states, actions, predicted_outputs):
+    def run_one_step_of_training(self, old_states, actions, rewards, new_states):
         """What the function name says.
 
         :param states:
@@ -90,9 +100,10 @@ class Critic:
         self.sess.run(
             self._train_step,
             feed_dict={
-                self.network.states: states,
+                self.states_input: new_states,
+                self.network.states: old_states,
                 self.network.actions: actions,
-                self._predicted_outputs: predicted_outputs
+                self.rewards_input: rewards
             }
         )
 
