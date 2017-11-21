@@ -31,7 +31,7 @@ class Critic:
         self.tau = tau
         self.gamma = gamma
 
-        self.network = CriticNetwork(state_dimensions, action_dimensions)
+        self.network = CriticNetwork(state_dimensions, action_dimensions, grad_actor=actor)
         # TODO: Actually in DDPG, they should be initialized to start from the same set of weights
         self.target_network = CriticNetwork(state_dimensions, action_dimensions, actor=actor)
 
@@ -59,7 +59,7 @@ class Critic:
         self.states_input = self.target_network.states
         self.rewards_input = tf.placeholder(tf.float32, [None, 1])
         # FIXME: Terminal states are ignored for now, as they're not relevant
-        # in the pendulumn env. They're relevant for other envs though, so fix.
+        # in the pendulum env. They're relevant for other envs though, so fix.
         self.y_i = tf.add(
             self.rewards_input,
             tf.multiply(self.gamma, self.target_q)
@@ -74,7 +74,8 @@ class Critic:
         self._train_step = tf.train.AdamOptimizer(self.learning_rate).minimize(self._mse)
 
         # Gradients to feed into the actor update
-        self._action_grads = tf.gradients(network_outputs, self.network.actions)
+        self._action_grads = tf.gradients(self.network._raw_grad_outputs, actor.network.scaled_outputs)
+        self.grad_states_input = actor.network.states
 
     def update_target_network(self):
         """Shift target network weights towards learned network weights."""
@@ -107,19 +108,19 @@ class Critic:
             }
         )
 
-    def compute_action_gradients(self, states, actions):
+    def compute_action_gradients(self, states):
         """Compute action gradients to feed into the actor update."""
         return self.sess.run(
             self._action_grads,
             feed_dict={
                 self.network.states: states,
-                self.network.actions: actions
+                self.grad_states_input: states
             }
         )
 
 
 class CriticNetwork:
-    def __init__(self, state_dimensions, action_dimensions, actor=None):
+    def __init__(self, state_dimensions, action_dimensions, actor=None, grad_actor=None):
         # Inputs for the quality function
         if actor is None:
             self.states = tf.placeholder(tf.float32, [None, state_dimensions])
@@ -150,6 +151,19 @@ class CriticNetwork:
         )
 
         self._raw_outputs = tf.add(tf.matmul(outputs2, input_weights[2]), input_biases[2])
+
+        if grad_actor is not None:
+            grad_inputs2_2 = tf.matmul(grad_actor.network.scaled_outputs, action_weights[0])
+            grad_outputs2 = tf.nn.relu(
+                tf.add(
+                    tf.add(inputs2_1, grad_inputs2_2),
+                    input_biases[1]
+                )
+            )
+            self._raw_grad_outputs = tf.add(
+                tf.matmul(grad_outputs2, input_weights[2]),
+                input_biases[2]
+            )
 
     def get_unscaled_outputs(self):
         return self._raw_outputs

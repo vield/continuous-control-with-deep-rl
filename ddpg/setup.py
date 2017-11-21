@@ -34,6 +34,8 @@ class Setup:
             gamma=self.gamma
         )
 
+        self.actor.set_train_step(self.critic)
+
         self.buffer = replay.ReplayBuffer(
             buffer_size=options.buffer_size,
             action_dimensions=env.action_space.shape[0],
@@ -89,23 +91,13 @@ class Setup:
             new_states=new_states
         )
         # Train actor
-        self._run_actor_training(old_states)
+        self.actor.run_one_step_of_training(
+            states=old_states
+        )
 
         # Update the target networks
         self.actor.update_target_network()
         self.critic.update_target_network()
-
-    def _run_actor_training(self, old_states):
-        # Train actor using the sampled policy gradients
-        predicted_actions = self.actor.predict(old_states)
-
-        self.actor.run_one_step_of_training(
-            states=old_states,
-            gradients=self.critic.compute_action_gradients(
-                states=old_states,
-                actions=predicted_actions
-            )[0]  # Why?
-        )
 
     def choose_action(self, state):
         """Use the actor to choose the best possible action given the current parameters."""
