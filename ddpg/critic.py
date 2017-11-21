@@ -6,7 +6,7 @@ from ddpg import network
 
 class Critic:
     """Container for the critic network and its target network."""
-    def __init__(self, sess,
+    def __init__(self, sess, actor,
                  action_dimensions=1, state_dimensions=1,
                  learning_rate=0.001, tau=0.001):
         """Initialize actor and actor target networks and ops for training.
@@ -32,7 +32,7 @@ class Critic:
 
         self.network = CriticNetwork(state_dimensions, action_dimensions)
         # TODO: Actually in DDPG, they should be initialized to start from the same set of weights
-        self.target_network = CriticNetwork(state_dimensions, action_dimensions)
+        self.target_network = CriticNetwork(state_dimensions, action_dimensions, actor=actor)
 
         # TensorFlow op for shifting the critic target network params
         # slightly towards the critic network params (controlled by
@@ -108,10 +108,14 @@ class Critic:
 
 
 class CriticNetwork:
-    def __init__(self, state_dimensions, action_dimensions):
+    def __init__(self, state_dimensions, action_dimensions, actor=None):
         # Inputs for the quality function
-        self.states = tf.placeholder(tf.float32, [None, state_dimensions])
-        self.actions = tf.placeholder(tf.float32, [None, action_dimensions])
+        if actor is None:
+            self.states = tf.placeholder(tf.float32, [None, state_dimensions])
+            self.actions = tf.placeholder(tf.float32, [None, action_dimensions])
+        else:
+            self.states = actor.target_network.states
+            self.actions = actor.target_network.scaled_outputs
 
         # Create network architecture
         # The actions are merged in for the second layer

@@ -28,6 +28,7 @@ class Setup:
         )
         self.critic = critic.Critic(
             sess=self.sess,
+            actor=self.actor,
             action_dimensions=self.action_dims,
             state_dimensions=self.state_dims
         )
