@@ -67,6 +67,8 @@ class Setup:
 
         self.total_reward_per_training_episode[-1] += reward[0]
 
+        self.state = new_state
+
         return done
 
     def run_one_step_of_training(self):
