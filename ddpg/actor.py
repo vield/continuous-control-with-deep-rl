@@ -36,6 +36,8 @@ class Actor:
         self.learning_rate = learning_rate
         self.tau = tau
 
+        self.batch_size = batch_size
+
         self.network = ActorNetwork(state_dimensions, action_dimensions, action_range)
         # TODO: Actually in DDPG, they should be initialized to start from the same set of weights
         self.target_network = ActorNetwork(state_dimensions, action_dimensions, action_range)
@@ -58,8 +60,9 @@ class Actor:
                 )
             )
 
-        # Gradients of the critic relative to the actions
-        self._initial_gradients = tf.placeholder(tf.float32, [None, action_dimensions])
+    def set_train_step(self, critic):
+        self._initial_gradients = critic._action_grads[0]
+        self.grad_states_input1 = critic.network.states
 
         self._weighted_gradients = tf.gradients(
             self.network.scaled_outputs,
@@ -69,13 +72,14 @@ class Actor:
             grad_ys=-self._initial_gradients
         )
         self._actor_gradients = [
-            tf.div(weighted_grad, batch_size)
+            tf.div(weighted_grad, self.batch_size)
             for weighted_grad in self._weighted_gradients
         ]
 
         self._train_step = tf.train.AdamOptimizer(self.learning_rate).apply_gradients(
             zip(self._actor_gradients, self.network.get_trainable_params())
         )
+
     def update_target_network(self):
         """Shift target network weights towards learned network weights."""
         self.sess.run(self._update_target_network_op)
@@ -88,12 +92,12 @@ class Actor:
         """Predict best actions using the target network."""
         return self.target_network.predict(self.sess, states)
 
-    def run_one_step_of_training(self, states, gradients):
+    def run_one_step_of_training(self, states):
         self.sess.run(
             self._train_step,
             feed_dict={
                 self.network.states: states,
-                self._initial_gradients: gradients
+                self.grad_states_input1: states
             }
         )
 

@@ -28,9 +28,13 @@ class Setup:
         )
         self.critic = critic.Critic(
             sess=self.sess,
+            actor=self.actor,
             action_dimensions=self.action_dims,
-            state_dimensions=self.state_dims
+            state_dimensions=self.state_dims,
+            gamma=self.gamma
         )
+
+        self.actor.set_train_step(self.critic)
 
         self.buffer = replay.ReplayBuffer(
             buffer_size=options.buffer_size,
@@ -79,47 +83,21 @@ class Setup:
         # Sample uncorrelated transitions from the replay buffer
         old_states, actions, rewards, new_states, is_terminal = self.buffer.next_batch(self.batch_size)
 
-        self._run_critic_training(old_states, actions, rewards, new_states, is_terminal)
-        self._run_actor_training(old_states)
+        # Train critic
+        self.critic.run_one_step_of_training(
+            old_states=old_states,
+            actions=actions,
+            rewards=rewards,
+            new_states=new_states
+        )
+        # Train actor
+        self.actor.run_one_step_of_training(
+            states=old_states
+        )
 
         # Update the target networks
         self.actor.update_target_network()
         self.critic.update_target_network()
-
-    def _run_critic_training(self, old_states, actions, rewards, new_states, is_terminal):
-        """Run one step of critic training."""
-        # Compute fixed y_i (target for the quality function the critic is learning)
-
-        # Use target networks to predict expected future rewards
-        target_q = self.critic.target_predict(
-            states=new_states,
-            actions=self.actor.target_predict(
-                states=new_states
-            )
-        )
-        # If the new_state is not a terminal state, add expected reward
-        # starting from there
-        y_i = rewards[:]
-        y_i[~is_terminal] += self.gamma * target_q[~is_terminal]
-
-        # Train critic relative to y_i
-        self.critic.run_one_step_of_training(
-            states=old_states,
-            actions=actions,
-            predicted_outputs=y_i
-        )
-
-    def _run_actor_training(self, old_states):
-        # Train actor using the sampled policy gradients
-        predicted_actions = self.actor.predict(old_states)
-
-        self.actor.run_one_step_of_training(
-            states=old_states,
-            gradients=self.critic.compute_action_gradients(
-                states=old_states,
-                actions=predicted_actions
-            )[0]  # Why?
-        )
 
     def choose_action(self, state):
         """Use the actor to choose the best possible action given the current parameters."""
