@@ -46,11 +46,11 @@ class Actor:
         approximating.
 
         :param critic:
+            Critic class, initialized for this actor.
         :param batch_size:
             Minibatch size for sampling. Used for initializing the
             deterministic policy gradient update (the expected value
             for the sample is the mean). See below.
-        :return:
         """
         # Gradients of the sum of the sample Qs w.r.t. the policy (that the
         # actor is approximating).
@@ -59,9 +59,7 @@ class Actor:
         weighted_gradients = tf.gradients(
             self.network.scaled_outputs,
             self.network.get_trainable_params(),
-            # Negated in pemami4911's work... but I don't understand why :S
-            # Need to read TensorFlow docs/code
-            grad_ys=-initial_gradients,
+            grad_ys=-initial_gradients
         )
         actor_gradients = [
             tf.div(weighted_grad, batch_size)
