@@ -6,7 +6,7 @@ from ddpg import network
 
 class Actor:
     """Container for the actor network and its target network."""
-    def __init__(self, sess, action_range, batch_size,
+    def __init__(self, sess, action_range,
                  action_dimensions=1, state_dimensions=1,
                  learning_rate=0.0001, tau=0.001):
         """Initialize actor and actor target networks and ops for training.
@@ -15,10 +15,6 @@ class Actor:
             TensorFlow session.
         :param action_range:
             [low, high] for the action range.
-        :param batch_size:
-            Minibatch size for sampling. Used for initializing the
-            deterministic policy gradient update (the expected value
-            for the sample is the mean). See below.
         :param action_dimensions:
             Dimensions of the (continuous) action space.
         :param state_dimensions:
@@ -30,22 +26,81 @@ class Actor:
             shifted towards the current actor network.
         """
         self.sess = sess
-        self.action_dimensions = action_dimensions
-        self.state_dimensions = state_dimensions
-
-        self.learning_rate = learning_rate
-        self.tau = tau
-
-        self.batch_size = batch_size
 
         self.network = ActorNetwork(state_dimensions, action_dimensions, action_range)
-        # TODO: Actually in DDPG, they should be initialized to start from the same set of weights
         self.target_network = ActorNetwork(state_dimensions, action_dimensions, action_range)
 
         # TensorFlow op for shifting the critic target network params
         # slightly towards the critic network params (controlled by
         # tau).
+        self._update_target_network_op = None
+        self._initialize_target_network_op(tau)
+
+        # Training params
+        self._learning_rate = learning_rate
+        self._train_step = None
+
+    def set_train_step(self, critic, batch_size):
+        """The train step is to adjust the parameters of the actor towards
+        sampled gradients of the action-value function that the critic is
+        approximating.
+
+        :param critic:
+        :param batch_size:
+            Minibatch size for sampling. Used for initializing the
+            deterministic policy gradient update (the expected value
+            for the sample is the mean). See below.
+        :return:
+        """
+        # Gradients of the sum of the sample Qs w.r.t. the policy (that the
+        # actor is approximating).
+        initial_gradients = critic.get_action_gradients_op()
+
+        weighted_gradients = tf.gradients(
+            self.network.scaled_outputs,
+            self.network.get_trainable_params(),
+            # Negated in pemami4911's work... but I don't understand why :S
+            # Need to read TensorFlow docs/code
+            grad_ys=-initial_gradients,
+        )
+        actor_gradients = [
+            tf.div(weighted_grad, batch_size)
+            for weighted_grad in weighted_gradients
+        ]
+
+        self._train_step = tf.train.AdamOptimizer(self._learning_rate).apply_gradients(
+            zip(actor_gradients, self.network.get_trainable_params())
+        )
+
+    def predict(self, states):
+        """Predict best actions using the trained network."""
+        return self.network.predict(self.sess, states)
+
+    def run_one_step_of_training(self, states):
+        """Using gradients from the critic, make the actor network just a little bit better.
+
+        :param states:
+            States from the sampled minibatch.
+        """
+        assert self._train_step is not None, "You must run set_train_step() before training!"
+
+        self.sess.run(
+            self._train_step,
+            feed_dict={
+                self.network.states: states,
+            }
+        )
+
+    def update_target_network(self):
+        """Shift target network weights towards learned network weights."""
+        self.sess.run(self._update_target_network_op)
+
+    #
+    #
+    # Helper functions
+    def _initialize_target_network_op(self, tau):
         self._update_target_network_op = []
+
         network_params = self.network.get_trainable_params()
         target_params = self.target_network.get_trainable_params()
 
@@ -60,46 +115,6 @@ class Actor:
                 )
             )
 
-    def set_train_step(self, critic):
-        self._initial_gradients = critic._action_grads[0]
-        self.grad_states_input1 = critic.network.states
-
-        self._weighted_gradients = tf.gradients(
-            self.network.scaled_outputs,
-            self.network.get_trainable_params(),
-            # Negated in pemami4911's work... but I don't understand why :S
-            # Need to read TensorFlow docs/code
-            grad_ys=-self._initial_gradients
-        )
-        self._actor_gradients = [
-            tf.div(weighted_grad, self.batch_size)
-            for weighted_grad in self._weighted_gradients
-        ]
-
-        self._train_step = tf.train.AdamOptimizer(self.learning_rate).apply_gradients(
-            zip(self._actor_gradients, self.network.get_trainable_params())
-        )
-
-    def update_target_network(self):
-        """Shift target network weights towards learned network weights."""
-        self.sess.run(self._update_target_network_op)
-
-    def predict(self, states):
-        """Predict best actions using the trained network."""
-        return self.network.predict(self.sess, states)
-
-    def target_predict(self, states):
-        """Predict best actions using the target network."""
-        return self.target_network.predict(self.sess, states)
-
-    def run_one_step_of_training(self, states):
-        self.sess.run(
-            self._train_step,
-            feed_dict={
-                self.network.states: states,
-                self.grad_states_input1: states
-            }
-        )
 
 class ActorNetwork:
     def __init__(self, state_dimensions, action_dimensions, action_range):

@@ -21,7 +21,6 @@ class Setup:
 
         self.actor = actor.Actor(
             sess=self.sess,
-            batch_size=self.batch_size,
             action_range=self.action_range,
             action_dimensions=self.action_dims,
             state_dimensions=self.state_dims
@@ -34,7 +33,7 @@ class Setup:
             gamma=self.gamma
         )
 
-        self.actor.set_train_step(self.critic)
+        self.actor.set_train_step(self.critic, batch_size=options.batch_size)
 
         self.buffer = replay.ReplayBuffer(
             buffer_size=options.buffer_size,

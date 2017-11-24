@@ -77,6 +77,10 @@ class Critic:
         self._action_grads = tf.gradients(self.network._raw_grad_outputs, actor.network.scaled_outputs)
         self.grad_states_input = actor.network.states
 
+    def get_action_gradients_op(self):
+        """Return gradients of the Q function w.r.t. mu (the current policy from the actor)."""
+        return self._action_grads[0]
+
     def update_target_network(self):
         """Shift target network weights towards learned network weights."""
         self.sess.run(self._update_target_network_op)
@@ -153,10 +157,16 @@ class CriticNetwork:
         self._raw_outputs = tf.add(tf.matmul(outputs2, input_weights[2]), input_biases[2])
 
         if grad_actor is not None:
+            grad_outputs1 = tf.nn.relu(
+                tf.add(
+                    tf.matmul(grad_actor.network.states, input_weights[0]), input_biases[0]
+                )
+            )
+            grad_inputs2_1 = tf.matmul(grad_outputs1, input_weights[1])
             grad_inputs2_2 = tf.matmul(grad_actor.network.scaled_outputs, action_weights[0])
             grad_outputs2 = tf.nn.relu(
                 tf.add(
-                    tf.add(inputs2_1, grad_inputs2_2),
+                    tf.add(grad_inputs2_1, grad_inputs2_2),
                     input_biases[1]
                 )
             )

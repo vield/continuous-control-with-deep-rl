@@ -1,3 +1,4 @@
+import csv
 import logging
 
 
@@ -8,6 +9,7 @@ def initialize_ddpg(options):
     from ddpg.setup import Setup
 
     # Hard-coded choice of environment, for now
+    # Try Moonlander, PuckWorld etc?
     GYM_ENV = 'Pendulum-v0'
     env = gym.make(GYM_ENV)
 
@@ -23,6 +25,9 @@ def initialize_ddpg(options):
 
 def run_ddpg(options):
     env, sess, setup = initialize_ddpg(options)
+
+    csv_logger = ResultsLogger('stats.csv')
+    csv_logger.start_logging()
 
     try:
         for episode in range(options.num_episodes):
@@ -41,6 +46,30 @@ def run_ddpg(options):
                     logging.info("Done. Finishing episode after {} timesteps.".format(time+1))
                     setup.log_results()
                     break
+
+            csv_logger.log({
+                'Episode': episode+1,
+                'TrainingReward': setup.total_reward_per_training_episode[-1]
+            })
     except KeyboardInterrupt:
         # FIXME: Better output
         print(setup.total_reward_per_training_episode[:-1])  # Last one might be corrupted
+        csv_logger.stop_logging()
+    else:
+        csv_logger.stop_logging()
+
+
+class ResultsLogger:
+    def __init__(self, filename):
+        self.fh = open(filename, 'w')
+        self.fieldnames = ['Episode', 'TrainingReward']
+        self.writer = csv.DictWriter(self.fh, fieldnames=self.fieldnames)
+
+    def start_logging(self):
+        self.writer.writeheader()
+
+    def stop_logging(self):
+        self.fh.close()
+
+    def log(self, d):
+        self.writer.writerow(d)
