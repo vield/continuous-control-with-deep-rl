@@ -2,6 +2,7 @@ import csv
 import logging
 
 
+
 def initialize_ddpg(options):
     # Heavy imports here to make `main.py --help` fast somewhere upstream
     import gym
@@ -9,8 +10,11 @@ def initialize_ddpg(options):
     from ddpg.setup import Setup
 
     # Hard-coded choice of environment, for now
-    # Try Moonlander, PuckWorld etc?
     GYM_ENV = 'Pendulum-v0'
+    # MountainCar has a continuous action space, but due to the nature of
+    # the reward, the default learning settings don't really work.
+    # Might benefit from prioritized experience replay.
+    #GYM_ENV = 'MountainCarContinuous-v0'
     env = gym.make(GYM_ENV)
 
     logging.debug("Using environment '{}'".format(GYM_ENV))
@@ -46,6 +50,8 @@ def run_ddpg(options):
                     logging.info("Done. Finishing episode after {} timesteps.".format(time+1))
                     setup.log_results()
                     break
+            else:
+                setup.log_results()
 
             csv_logger.log({
                 'Episode': episode+1,

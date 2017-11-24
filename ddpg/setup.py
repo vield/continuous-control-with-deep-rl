@@ -68,7 +68,10 @@ class Setup:
         new_state, reward, done, info = self.env.step(action)
         self.buffer.store(self.state, action, reward, new_state, done)
 
-        self.total_reward_per_training_episode[-1] += reward[0]
+        try:
+            self.total_reward_per_training_episode[-1] += reward[0]
+        except TypeError:
+            self.total_reward_per_training_episode[-1] += reward
 
         self.state = new_state
 
