@@ -51,11 +51,13 @@ class Setup:
         self.current_episode = 0
         self.total_reward_per_training_episode = []
         self.state = None
+        self.evaluation_reward = []
 
-    def reset(self):
+    def reset(self, advance_episode=True):
         self.state = self.env.reset()
-        self.total_reward_per_training_episode.append(0.0)
-        self.current_episode += 1
+        if advance_episode:
+            self.total_reward_per_training_episode.append(0.0)
+            self.current_episode += 1
 
     def make_an_exploratory_move(self):
         """Choose action with exploratory noise; observe and store outcome.
@@ -75,6 +77,18 @@ class Setup:
 
         self.state = new_state
 
+        return done
+
+    def make_a_move(self):
+        action = self.choose_action(self.state)
+        new_state, reward, done, info = self.env.step(action)
+
+        try:
+            self.evaluation_reward[-1] += reward[0]
+        except TypeError:
+            self.evaluation_reward[-1] += reward
+
+        self.state = new_state
         return done
 
     def run_one_step_of_training(self):
@@ -108,6 +122,22 @@ class Setup:
     def choose_noisy_action(self, state):
         """Choose the best possible action and add some 'exploratory' noise."""
         return self.choose_action(state) + self.generate_noise()
+
+    def evaluate(self, max_timesteps, render_testing=False):
+        self.evaluation_reward.append(0.0)
+        self.reset(advance_episode=False)
+
+        for time in range(max_timesteps):
+            if render_testing:
+                self.env.render()
+
+            done = self.make_a_move()
+            if done:
+                break
+
+        logging.debug('Testing. Episode: {} Testing reward: {}'.format(self.current_episode, self.evaluation_reward[-1]))
+
+        return self.evaluation_reward[-1]
 
     def log_results(self):
         logging.debug("Episode: {} Total reward: {}".format(self.current_episode, self.total_reward_per_training_episode[-1]))

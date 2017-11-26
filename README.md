@@ -24,10 +24,11 @@ For something pixel-based, one would probably want to add convolutional layers t
 
 ## Results
 
-From an early run of the mini demo, it appears to be learning something as training progresses.
-Note that in all these episodes, noise has been introduced to the action predicting process, so we are not choosing the actions currently believed to be optimal.
+Pendulum environment; default settings.
+Testing reward against average training reward over ten training episodes.
+Note that during training we are not performing at our "current known best" because of the noise.
 
-<img src="images/reward-per-training-episode.png" alt="Total reward per training episode" />
+<img src="images/reward-development.png" alt="Training and testing reward change over time" />
 
 ## Future work
 

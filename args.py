@@ -13,16 +13,20 @@ def parse_and_validate_args():
                         help="""Log level messages starting from this level will
 be printed to stdout, unless --quieted"""
     )
+    output_opts.add_argument('--evaluation-frequency', type=int, default=10,
+                             help="""How many episodes should pass between evaluations""")
     # FIXME The defaults are printed confusingly when using ArgumentDefaultsHelpFormatter
     output_opts.add_argument('--no-render-training', dest='render_training', action='store_false',
                         help="Don't bother rendering the env while training, I want to save time")
     output_opts.add_argument('--render-training', dest='render_training', action='store_true',
                         help="Yes please, I want to look at my env while training")
+    output_opts.add_argument('--no-render-testing', dest='render_testing', action='store_false')
+    output_opts.add_argument('--render-testing', dest='render_testing', action='store_true')
     output_opts.add_argument('--quiet', dest='verbose', action='store_false',
                         help="Don't print output to stdout")
     output_opts.add_argument('--verbose', dest='verbose', action='store_true',
                         help="Print logging output to stdout")
-    output_opts.set_defaults(verbose=True, render_training=True)
+    output_opts.set_defaults(verbose=True, render_training=True, render_testing=False)
 
     # Sizes and stuff
     training_opts = parser.add_argument_group("Training settings")

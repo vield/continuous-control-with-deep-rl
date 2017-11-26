@@ -53,10 +53,16 @@ def run_ddpg(options):
             else:
                 setup.log_results()
 
+            test_reward = ''
+            if episode % options.evaluation_frequency == 0 or episode == options.num_episodes - 1:
+                test_reward = setup.evaluate(options.num_timesteps, render_testing=options.render_testing)
+
             csv_logger.log({
                 'Episode': episode+1,
-                'TrainingReward': setup.total_reward_per_training_episode[-1]
+                'TrainingReward': setup.total_reward_per_training_episode[-1],
+                'TestReward': test_reward
             })
+
     except KeyboardInterrupt:
         # FIXME: Better output
         print(setup.total_reward_per_training_episode[:-1])  # Last one might be corrupted
@@ -68,7 +74,7 @@ def run_ddpg(options):
 class ResultsLogger:
     def __init__(self, filename):
         self.fh = open(filename, 'w')
-        self.fieldnames = ['Episode', 'TrainingReward']
+        self.fieldnames = ['Episode', 'TrainingReward', 'TestReward']
         self.writer = csv.DictWriter(self.fh, fieldnames=self.fieldnames)
 
     def start_logging(self):
